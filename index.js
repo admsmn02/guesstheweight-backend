@@ -25,6 +25,16 @@ client.connect()
     .catch(err => console.error('Connection error', err.stack));
 
 
+app.get('/api/leaderboard', async (req, res) => {
+    try {
+        const result = await client.query('SELECT * FROM leaderboard ORDER BY score DESC LIMIT 10'); // Fetch top 10 scores
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching leaderboard:', err);
+        res.status(500).json({ error: 'Failed to retrieve leaderboard' });
+    }
+});
+      
 app.post('/api/leaderboard', async (req, res) => {
     const { name, score } = req.body;
     try {
