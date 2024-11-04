@@ -3,8 +3,8 @@ const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const { Client } = require('pg'); // Import PostgreSQL client
 
-// // Replace with your actual OpenAI API key and Pixabay API key
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY;
 
@@ -14,6 +14,28 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+
+// PostgreSQL client setup
+const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+});
+
+client.connect()
+    .then(() => console.log('Connected to PostgreSQL'))
+    .catch(err => console.error('Connection error', err.stack));
+
+
+app.post('/api/leaderboard', async (req, res) => {
+    const { name, score } = req.body;
+    try {
+        const query = 'INSERT INTO leaderboard (name, score) VALUES ($1, $2)';
+        await client.query(query, [name, score]);
+        res.status(201).json({ message: 'Score inserted successfully' });
+    } catch (err) {
+        console.error('Error inserting score:', err);
+        res.status(500).json({ error: 'Failed to insert score' });
+    }
+});
 
 app.post('/get-weight', async (req, res) => {
     const object = req.body.object;
