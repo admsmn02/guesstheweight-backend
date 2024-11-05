@@ -3,7 +3,7 @@ const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const { Client } = require('pg'); // Import PostgreSQL client
+const { Client } = require('pg');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY;
@@ -11,15 +11,13 @@ const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY;
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// PostgreSQL client setup
 const client = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: {
-        rejectUnauthorized: false, // This allows self-signed certificates; you may want to enable this in production
+        rejectUnauthorized: false,
     },
 });
 
@@ -29,7 +27,7 @@ client.connect()
     .catch(err => console.error('Connection error', err.stack));
 
 
-app.get('/api/getleaderboard', async (req, res) => {
+app.get('/getleaderboard', async (req, res) => {
     console.log('hello');
     try {
         const result = await client.query('SELECT * FROM leaderboard ORDER BY score DESC LIMIT 10'); // Fetch top 10 scores
@@ -40,31 +38,36 @@ app.get('/api/getleaderboard', async (req, res) => {
     }
 });
       
-app.post('/api/leaderboard', async (req, res) => {
+app.post('/leaderboard', async (req, res) => {
     const { name, score } = req.body;
-    try {
-        // Use UPSERT logic to handle both inserting and updating
-        const query = `
-            INSERT INTO leaderboard (name, score) 
-            VALUES ($1, $2) 
-            ON CONFLICT (name) 
-            DO UPDATE SET score = GREATEST(leaderboard.score, EXCLUDED.score)
-            RETURNING *;
-        `;
-        
-        const result = await client.query(query, [name, score]);
 
-        // If a new row is inserted or an existing row is updated, the result will not be empty
-        if (result.rows.length > 0) {
-            res.status(200).json({ message: 'Score processed successfully', score: result.rows[0].score });
+    // Basic validation
+    if (!name || typeof score !== 'number') {
+        return res.status(400).json({ error: 'Name and score are required, and score must be a number.' });
+    }
+
+    try {
+        // Check if the player already exists in the leaderboard
+        const checkQuery = `SELECT * FROM leaderboard WHERE name = $1`;
+        const checkResult = await client.query(checkQuery, [name]);
+
+        if (checkResult.rows.length > 0) {
+            // If the player exists, update the score if the new score is higher
+            const updateQuery = `UPDATE leaderboard SET score = $1 WHERE name = $2 RETURNING *`;
+            const updateResult = await client.query(updateQuery, [score, name]);
+            return res.status(200).json({ message: 'Score updated successfully', score: updateResult.rows[0].score });
         } else {
-            res.status(400).json({ message: 'No score was processed' });
+            // If the player does not exist, insert a new record
+            const insertQuery = `INSERT INTO leaderboard (name, score) VALUES ($1, $2) RETURNING *`;
+            const insertResult = await client.query(insertQuery, [name, score]);
+            return res.status(201).json({ message: 'Score added successfully', score: insertResult.rows[0].score });
         }
     } catch (err) {
         console.error('Error processing score submission:', err);
-        res.status(500).json({ error: 'Failed to process score submission' });
+        return res.status(500).json({ error: 'Failed to process score submission due to database error.' });
     }
 });
+
 
 
 
@@ -127,12 +130,11 @@ app.post('/generate-image', async (req, res) => {
                 key: PIXABAY_API_KEY,
                 q: searchQuery,
                 image_type: 'photo',
-                per_page: 5 // Fetch a few images to check for relevance
+                per_page: 5
             }
         });
 
         if (response.data.hits.length > 0) {
-            // Select the most relevant image
             const relevantImage = response.data.hits.find(hit => hit.tags.toLowerCase().includes(object.toLowerCase())) || response.data.hits[0];
             const imageUrl = relevantImage.webformatURL;
             return res.json({ imageUrl });
@@ -145,7 +147,6 @@ app.post('/generate-image', async (req, res) => {
     }
 });
 
-// Start server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
